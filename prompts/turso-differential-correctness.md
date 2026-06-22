@@ -21,13 +21,11 @@ the deterministic harness we already have rather than standing up your own. What
 add has to run through the harness we've got and reproduce exactly off a seed the way the
 rest of it does.
 
-Here's the part that makes this real work and not an afternoon: a lot of the queries worth
-running don't have a single right answer you can just compare against, row order when
-there's no ORDER BY, anything where the engine is free to make its own call. So plain row
-equality is useless, it'll either miss the bugs that matter or flag a hundred differences
-that are all fine. I need it to actually get at logic bugs in the hard stuff, joins,
-aggregates, nested where-clauses, and I need to trust a flag. If it cries wolf on queries
-that are genuinely equivalent it's worse than nothing, I'll stop believing it on day one.
+What I care about most is that I can trust it. Every time it flags a disagreement I need
+that to be a genuine wrong answer in the engine, not the tool being sloppy, if it cries
+wolf I'll stop believing it on day one. And it has to earn its keep too, a checker that
+plays it safe and never surfaces anything real is just as useless to me. Point it at the
+kind of queries that actually put the engine through its paces, not toy selects.
 
 And a finding has to be usable. A thousand-statement session that disagreed somewhere isn't
 a bug, I need it cut down to the smallest case that still shows it and replayable off the
@@ -52,8 +50,12 @@ generator rather than rebuilding them. A real SQLite is wired in as the oracle. 
 gets actual divergences out the other end, each minimized and reproducible, with known
 COMPAT.md gaps filtered out.
 
-The decisive, hard part is comparing queries that have no single correct answer to diff
-against (ordering without ORDER BY, optimizer-dependent results, and so on). A strong
+The decisive, hard part, which the prompt deliberately does not point at, is that most
+queries worth running have no single correct answer to diff against (ordering without
+ORDER BY, optimizer-dependent results, and so on). A straight row-compare therefore either
+misses real bugs or floods the report with false positives, and the model has to figure
+that out on its own from the two-sided demand to both be trustworthy and actually find
+things. A strong
 solution lands on metamorphic-style checks: transform a query into a form that must return
 the same rows and compare those, instead of comparing to a fixed expected result. Common
 families here are ternary-logic partitioning of the WHERE clause and optimization-
@@ -100,9 +102,11 @@ are all stated in the prompt in natural words so the rating maps to exact prompt
 Work is centered in an unfamiliar, nontrivial Rust codebase: the model must understand the
 existing simulator's deterministic execution model and the `sql_generation` crate, then
 extend both and hook the engine's internal connection/execution APIs. The "no single right
-answer" line is load-bearing: the only way to test those queries is metamorphic oracles
-(ternary-logic partitioning, optimization-equivalence rewrites), and the prompt deliberately
-states that difficulty without naming the technique. The NULL/3VL handling is where models
+answer" problem is load-bearing: the only way to test those queries is metamorphic oracles
+(ternary-logic partitioning, optimization-equivalence rewrites). The prompt no longer
+signposts this difficulty or which query families to probe; the model must infer that naive
+equality both over- and under-fires purely from the two-sided trust-plus-coverage demand.
+The NULL/3VL handling is where models
 silently produce false positives that poison the report. Stacked with: reusing (not
 reinventing) the in-tree generator and determinism, minimization that preserves repro
 validity, COMPAT denylisting, root-cause dedup. Verifier runs the harness, not the writeup.
